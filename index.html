@@ -44,6 +44,74 @@ body {
 }
 
 /* Lobby */
+.mode-selection {
+    max-width: 900px;
+    margin: 60px auto;
+    padding: 40px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 15px;
+    border: 2px solid #FFE81F;
+    backdrop-filter: blur(10px);
+    text-align: center;
+}
+
+.mode-selection h2 {
+    color: #FFE81F;
+    font-size: 2.5em;
+    margin-bottom: 40px;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+
+.mode-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 30px;
+    max-width: 700px;
+    margin: 0 auto;
+}
+
+.mode-btn {
+    background: linear-gradient(135deg, rgba(74, 158, 255, 0.2) 0%, rgba(74, 158, 255, 0.05) 100%);
+    border: 3px solid #4A9EFF;
+    border-radius: 15px;
+    padding: 40px 30px;
+    cursor: pointer;
+    transition: all 0.3s;
+    color: #f0e6d2;
+    text-align: center;
+}
+
+.mode-btn:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(74, 158, 255, 0.4);
+    border-color: #FFE81F;
+    background: linear-gradient(135deg, rgba(74, 158, 255, 0.3) 0%, rgba(74, 158, 255, 0.1) 100%);
+}
+
+.mode-icon {
+    font-size: 4em;
+    margin-bottom: 15px;
+}
+
+.mode-btn h3 {
+    color: #FFE81F;
+    font-size: 1.8em;
+    margin-bottom: 10px;
+}
+
+.mode-btn p {
+    color: #4A9EFF;
+    font-size: 1.1em;
+    margin: 0;
+}
+
+@media (max-width: 768px) {
+    .mode-buttons {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+}
+
 .lobby {
     max-width: 800px;
     margin: 40px auto;
@@ -528,8 +596,25 @@ body {
         <p>A disturbance in the Force... someone has been eliminated!</p>
     </div>
 
+    <!-- Game Mode Selection -->
+    <div class="mode-selection" id="modeSelection">
+        <h2>Choose Game Mode</h2>
+        <div class="mode-buttons">
+            <button class="mode-btn" onclick="startSinglePlayer()">
+                <div class="mode-icon">🤖</div>
+                <h3>Single Player</h3>
+                <p>Play against AI opponents</p>
+            </button>
+            <button class="mode-btn" onclick="showMultiplayer()">
+                <div class="mode-icon">👥</div>
+                <h3>Multiplayer</h3>
+                <p>Play with friends online</p>
+            </button>
+        </div>
+    </div>
+
     <!-- Lobby Screen -->
-    <div class="lobby" id="lobby">
+    <div class="lobby hidden" id="lobby">
         <h2>Join or Create a Game</h2>
         
         <div class="lobby-controls">
@@ -666,6 +751,7 @@ let roomCode = '';
 let myPlayerId = '';
 let myPlayerName = '';
 let players = [];
+let isSinglePlayer = false;
 let gameState = {
     started: false,
     currentPlayerIndex: 0,
@@ -678,6 +764,83 @@ let gameState = {
 // Initialize
 function init() {
     populateSelects();
+}
+
+function startSinglePlayer() {
+    isSinglePlayer = true;
+    myPlayerName = 'You';
+    myPlayerId = 'player-human';
+    
+    // Create AI players
+    players = [
+        {id: 'player-human', name: 'You', isHost: true},
+        {id: 'player-ai1', name: 'R2-D2 (AI)', isHost: false},
+        {id: 'player-ai2', name: 'C-3PO (AI)', isHost: false},
+        {id: 'player-ai3', name: 'BB-8 (AI)', isHost: false}
+    ];
+    
+    // Hide mode selection and start game
+    document.getElementById('modeSelection').style.display = 'none';
+    
+    // Start game immediately
+    startGameSinglePlayer();
+}
+
+function showMultiplayer() {
+    isSinglePlayer = false;
+    document.getElementById('modeSelection').style.display = 'none';
+    document.getElementById('lobby').classList.remove('hidden');
+}
+
+function startGameSinglePlayer() {
+    isHost = true;
+    
+    // Generate solution
+    gameState.solution = {
+        suspect: SUSPECTS[Math.floor(Math.random() * SUSPECTS.length)],
+        weapon: WEAPONS[Math.floor(Math.random() * WEAPONS.length)],
+        location: LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)]
+    };
+    
+    // Create deck (all cards except solution)
+    let deck = [];
+    SUSPECTS.forEach(s => {
+        if(s !== gameState.solution.suspect) deck.push({type: 'suspect', value: s});
+    });
+    WEAPONS.forEach(w => {
+        if(w !== gameState.solution.weapon) deck.push({type: 'weapon', value: w});
+    });
+    LOCATIONS.forEach(l => {
+        if(l !== gameState.solution.location) deck.push({type: 'location', value: l});
+    });
+    
+    // Shuffle deck
+    deck = shuffle(deck);
+    
+    // Deal cards
+    let cardIndex = 0;
+    players.forEach(p => {
+        gameState.playerCards[p.id] = [];
+    });
+    
+    while(cardIndex < deck.length) {
+        players.forEach(p => {
+            if(cardIndex < deck.length) {
+                gameState.playerCards[p.id].push(deck[cardIndex]);
+                cardIndex++;
+            }
+        });
+    }
+    
+    // Initialize clue sheets
+    players.forEach(p => {
+        gameState.clueSheet[p.id] = {};
+    });
+    
+    gameState.started = true;
+    gameState.currentPlayerIndex = 0;
+    
+    startGameUI();
 }
 
 function populateSelects() {
@@ -936,9 +1099,13 @@ function initClueSheet() {
     const table = document.getElementById('clueTable');
     table.innerHTML = '';
     
-    // Get my cards
+    // Get ONLY my cards
     const myCards = gameState.playerCards[myPlayerId] || [];
     const myCardValues = myCards.map(c => c.value);
+    
+    console.log('My Player ID:', myPlayerId);
+    console.log('My Cards:', myCardValues);
+    console.log('All Player Cards:', gameState.playerCards);
     
     // Create header row
     const headerRow = document.createElement('tr');
@@ -977,7 +1144,7 @@ function initClueSheet() {
         players.forEach((p, idx) => {
             const cell = document.createElement('td');
             
-            // If this is MY column - all cells are clickable for notes
+            // If this is MY column - all cells are clickable for my notes
             if(p.id === myPlayerId) {
                 cell.className = 'clickable';
                 cell.dataset.item = item.value;
@@ -985,13 +1152,14 @@ function initClueSheet() {
                 cell.onclick = () => cycleClueCell(cell);
             } 
             // If this is ANOTHER player's column AND I have this card
-            // Show green check (they don't have it since I do)
+            // Show green check (they CAN'T have it since I do)
             else if(myCardValues.includes(item.value)) {
                 cell.className = 'has-card';
                 cell.textContent = '✓';
                 cell.title = "You have this card, so they don't";
             }
-            // Otherwise it's clickable for notes
+            // If this is ANOTHER player's column AND I DON'T have this card
+            // Make it clickable for notes
             else {
                 cell.className = 'clickable';
                 cell.dataset.item = item.value;
@@ -1108,18 +1276,58 @@ function makeSuggestion() {
     
     addLog(`${myPlayerName} suggests: ${suspect}, ${weapon}, ${location}`, true);
     
-    broadcast({
-        type: 'suggestion',
-        playerId: myPlayerId,
-        playerName: myPlayerName,
-        suggestion: suggestion
-    });
+    if(!isSinglePlayer) {
+        broadcast({
+            type: 'suggestion',
+            playerId: myPlayerId,
+            playerName: myPlayerName,
+            suggestion: suggestion
+        });
+    }
     
-    handleSuggestion({
-        playerId: myPlayerId,
-        playerName: myPlayerName,
-        suggestion: suggestion
-    });
+    // In single player, check AI players for matching cards
+    if(isSinglePlayer) {
+        handleSinglePlayerSuggestion(suggestion);
+    } else {
+        handleSuggestion({
+            playerId: myPlayerId,
+            playerName: myPlayerName,
+            suggestion: suggestion
+        });
+    }
+}
+
+function handleSinglePlayerSuggestion(suggestion) {
+    // Check each AI player for matching cards
+    let cardShown = false;
+    
+    for(let i = 1; i < players.length; i++) {
+        const nextPlayerIdx = (gameState.currentPlayerIndex + i) % players.length;
+        const aiPlayer = players[nextPlayerIdx];
+        
+        if(aiPlayer.id === myPlayerId) continue;
+        
+        const aiCards = gameState.playerCards[aiPlayer.id] || [];
+        const matchingCards = aiCards.filter(card => 
+            card.value === suggestion.suspect || 
+            card.value === suggestion.weapon || 
+            card.value === suggestion.location
+        );
+        
+        if(matchingCards.length > 0) {
+            // AI shows a random matching card
+            const cardToShow = matchingCards[Math.floor(Math.random() * matchingCards.length)];
+            addLog(`${aiPlayer.name} showed you: ${cardToShow.value}`, true);
+            cardShown = true;
+            break;
+        } else {
+            addLog(`${aiPlayer.name} has none of the suggested cards`);
+        }
+    }
+    
+    if(!cardShown) {
+        showMessage('No Matches!', 'No one has any of the cards you suggested. This is valuable information!');
+    }
 }
 
 function handleSuggestion(data) {
@@ -1153,15 +1361,102 @@ function endTurn() {
     
     gameState.currentPlayerIndex = nextPlayerIndex;
     
-    broadcast({
-        type: 'nextTurn',
-        nextPlayerIndex: nextPlayerIndex,
-        playerName: nextPlayer.name
-    });
+    if(!isSinglePlayer) {
+        broadcast({
+            type: 'nextTurn',
+            nextPlayerIndex: nextPlayerIndex,
+            playerName: nextPlayer.name
+        });
+    }
     
     updatePlayersStatus();
     addLog(`${myPlayerName} ended their turn`, true);
     addLog(`${nextPlayer.name}'s turn`, true);
+    
+    // In single player, run AI turns
+    if(isSinglePlayer && nextPlayer.id !== myPlayerId) {
+        setTimeout(() => runAITurn(nextPlayer), 1500);
+    }
+}
+
+function runAITurn(aiPlayer) {
+    if(gameState.currentPlayerIndex !== players.indexOf(aiPlayer)) return;
+    
+    addLog(`${aiPlayer.name}'s turn`, true);
+    
+    // AI makes a random suggestion
+    const suspect = SUSPECTS[Math.floor(Math.random() * SUSPECTS.length)];
+    const weapon = WEAPONS[Math.floor(Math.random() * WEAPONS.length)];
+    const location = LOCATIONS[Math.floor(Math.random() * LOCATIONS.length)];
+    
+    addLog(`${aiPlayer.name} suggests: ${suspect}, ${weapon}, ${location}`, true);
+    
+    // Check human player for matching cards
+    setTimeout(() => {
+        const myCards = gameState.playerCards[myPlayerId] || [];
+        const matchingCards = myCards.filter(card => 
+            card.value === suspect || 
+            card.value === weapon || 
+            card.value === location
+        );
+        
+        if(matchingCards.length > 0) {
+            // Show popup for human to choose which card to show
+            showAISuggestionDialog(matchingCards, aiPlayer, {suspect, weapon, location});
+        } else {
+            addLog(`You have none of ${aiPlayer.name}'s suggested cards`);
+            
+            // AI turn ends, move to next player
+            setTimeout(() => {
+                gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % players.length;
+                updatePlayersStatus();
+                
+                const nextPlayer = players[gameState.currentPlayerIndex];
+                addLog(`${nextPlayer.name}'s turn`, true);
+                
+                if(nextPlayer.id !== myPlayerId) {
+                    setTimeout(() => runAITurn(nextPlayer), 1500);
+                }
+            }, 1000);
+        }
+    }, 1000);
+}
+
+function showAISuggestionDialog(matchingCards, aiPlayer, suggestion) {
+    let msg = `<strong>${aiPlayer.name}</strong> suggests:<br>`;
+    msg += `<div style="background: rgba(74, 158, 255, 0.2); padding: 10px; margin: 10px 0; border-radius: 5px;">`;
+    msg += `🔍 <strong>${suggestion.suspect}</strong><br>`;
+    msg += `🗡️ <strong>${suggestion.weapon}</strong><br>`;
+    msg += `🏛️ <strong>${suggestion.location}</strong>`;
+    msg += `</div>`;
+    msg += `<p style="color: #2ecc71; font-weight: bold;">You have matching cards! Choose one to show:</p>`;
+    
+    let cardButtons = '';
+    matchingCards.forEach(card => {
+        cardButtons += `<button class="btn btn-secondary" style="margin: 5px;" onclick="showCardToAI('${card.value}', '${aiPlayer.id}', '${aiPlayer.name}')">${card.value}</button><br>`;
+    });
+    
+    document.getElementById('messageTitle').textContent = 'Suggestion from ' + aiPlayer.name;
+    document.getElementById('messageText').innerHTML = msg + cardButtons;
+    document.getElementById('messageBox').classList.add('show');
+}
+
+function showCardToAI(cardValue, aiPlayerId, aiPlayerName) {
+    closeMessage();
+    addLog(`You showed ${cardValue} to ${aiPlayerName}`);
+    
+    // AI turn ends, move to next player
+    setTimeout(() => {
+        gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % players.length;
+        updatePlayersStatus();
+        
+        const nextPlayer = players[gameState.currentPlayerIndex];
+        addLog(`${nextPlayer.name}'s turn`, true);
+        
+        if(nextPlayer.id !== myPlayerId) {
+            setTimeout(() => runAITurn(nextPlayer), 1500);
+        }
+    }, 500);
 }
 
 function showCardChoice(cards, requesterId, requesterName, suggestion) {
@@ -1255,12 +1550,14 @@ function makeAccusation() {
     
     const accusation = {suspect, weapon, location};
     
-    broadcast({
-        type: 'accusation',
-        playerId: myPlayerId,
-        playerName: myPlayerName,
-        accusation: accusation
-    });
+    if(!isSinglePlayer) {
+        broadcast({
+            type: 'accusation',
+            playerId: myPlayerId,
+            playerName: myPlayerName,
+            accusation: accusation
+        });
+    }
     
     handleAccusation({
         playerId: myPlayerId,
